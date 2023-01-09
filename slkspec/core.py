@@ -33,7 +33,9 @@ logger.setLevel(logging.INFO)
 
 MAX_RETRIES = 2
 FileQueue: Queue[Tuple[str, str]] = Queue(maxsize=-1)
-FileInfo = TypedDict("FileInfo", {"name": str, "size": Literal[None], "type": str})
+FileInfo = TypedDict(
+    "FileInfo", {"name": str, "size": Literal[None], "type": str}
+)
 _retrieval_lock = threading.Lock()
 
 
@@ -114,7 +116,6 @@ class SLKFile(io.IOBase):
         self.encoding = kwargs.get("encoding")
         self.write_through = False
         self._file_queue = _file_queue
-        print(self._file)
         with _lock:
             if not Path(self._file).exists() or override:
                 self._file_queue.put((self._url, str(Path(self._file).parent)))
@@ -138,7 +139,9 @@ class SLKFile(io.IOBase):
         for inp_file, out_dir in retrieve_files:
             retrieval_requests[Path(out_dir)].append(inp_file)
         for output_dir, inp_files in retrieval_requests.items():
-            output_dir.mkdir(parents=True, exist_ok=True, mode=self.file_permissions)
+            output_dir.mkdir(
+                parents=True, exist_ok=True, mode=self.file_permissions
+            )
             logger.debug("Creating slk query for %i files", len(inp_files))
             search_str = pyslk.slk_search(pyslk.slk_gen_file_query(inp_files))
             search_id_re = re.search("Search ID: [0-9]*", search_str)
@@ -159,7 +162,15 @@ class SLKFile(io.IOBase):
                 for _ in range(self._file_queue.qsize() - 1):
                     items.append(self._file_queue.get())
                     self._file_queue.task_done()
-                self._retrieve_items(items)
+                try:
+                    self._retrieve_items(items)
+                except Exception as error:
+                    _ = [
+                        self._file_queue.get()
+                        for _ in range(self._file_queue.qsize())
+                    ]
+                    self._file_queue.task_done()
+                    raise error
                 _ = self._file_queue.get()
                 self._file_queue.task_done()
         self._file_queue.join()
